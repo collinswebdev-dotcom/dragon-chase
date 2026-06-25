@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🐉 Dragon Chase</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        #gameContainer {
+            position: relative;
+            border: 4px solid #ff6b35;
+            border-radius: 12px;
+            box-shadow: 0 0 60px rgba(255, 107, 53, 0.2);
+        }
+
+        canvas {
+            display: block;
+            border-radius: 8px;
+            background: #1a1a2e;
+            cursor: pointer;
+        }
+
+        #ui {
+            position: absolute;
+            top: 15px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            color: white;
+            font-size: 18px;
+            font-weight: bold;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        #ui span {
+            background: rgba(0,0,0,0.5);
+            padding: 6px 16px;
+            border-radius: 20px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.75);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            border-radius: 8px;
+            z-index: 20;
+            backdrop-filter: blur(4px);
+        }
+
+        #gameOver h1 {
+            font-size: 52px;
+            margin-bottom: 8px;
+            color: #ff6b35;
+            text-shadow: 0 0 40px rgba(255,107,53,0.4);
+        }
+
+        #gameOver p {
+            font-size: 22px;
+            margin: 6px 0;
+            opacity: 0.9;
+        }
+
+        #gameOver .final-score {
+            font-size: 28px;
+            color: #ffd93d;
+            margin: 10px 0 20px;
+        }
+
+        #restartBtn {
+            background: #ff6b35;
+            border: none;
+            color: white;
+            font-size: 22px;
+            font-weight: bold;
+            padding: 14px 48px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 0 30px rgba(255,107,53,0.3);
+            margin-top: 10px;
+        }
+
+        #restartBtn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 50px rgba(255,107,53,0.5);
+        }
+
+        #startMsg {
+            position: absolute;
+            bottom: 60px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: rgba(255,255,255,0.5);
+            font-size: 16px;
+            pointer-events: none;
+            z-index: 5;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+
+        /* Mobile responsiveness */
+        @media (max-width: 600px) {
+            canvas {
+                width: 100%;
+                height: auto;
+            }
+            #ui {
+                font-size: 14px;
+                top: 10px;
+                left: 12px;
+                right: 12px;
+            }
+            #gameOver h1 {
+                font-size: 32px;
+            }
+            #restartBtn {
+                font-size: 18px;
+                padding: 12px 32px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+    <!-- UI Overlay -->
+    <div id="ui">
+        <span>❤️ <span id="livesDisplay">3</span></span>
+        <span>⭐ <span id="scoreDisplay">0</span></span>
+    </div>
+
+    <!-- Start Message -->
+    <div id="startMsg">🖱️ Tap / Press Space to Jump</div>
+
+    <!-- Game Over Overlay -->
+    <div id="gameOver">
+        <h1>💀 GAME OVER</h1>
+        <p>The Dragon caught you!</p>
+        <div class="final-score">⭐ Score: <span id="finalScore">0</span></div>
+        <button id="restartBtn">🔄 Play Again</button>
+    </div>
+</div>
+
+<script>
+    // --- SETUP ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = 800, H = 400;
+
+    // --- DOM REFS ---
+    const livesSpan = document.getElementById('livesDisplay');
+    const scoreSpan = document.getElementById('scoreDisplay');
+    const finalScoreSpan = document.getElementById('finalScore');
+    const gameOverDiv = document.getElementById('gameOver');
+    const startMsg = document.getElementById('startMsg');
+    const restartBtn = document.getElementById('restartBtn');
+
+    // --- GAME STATE ---
+    let gameRunning = true;
+    let score = 0;
+    let lives = 3;
+    let frame = 0;
+
+    // --- GROUND ---
+    const groundY = 340;
+    const groundHeight = 60;
+
+    // --- PLAYER (Boy) ---
+    const player = {
+        x: 80,
+        y: groundY - 40,
+        w: 30,
+        h: 40,
+        vy: 0,
+        gravity: 0.6,
+        jumpPower: -12,
+        grounded: true,
+        color: '#4fc3f7',
+        eyeColor: '#fff'
+    };
+
+    // --- DRAGON ---
+    const dragon = {
+        x: 750,
+        y: groundY - 50,
+        w: 50,
+        h: 50,
+        speed: 3.5,
+        wingAngle: 0,
+        color: '#ff6b35',
+        eyeColor: '#ffd93d'
+    };
+
+    // --- OBSTACLES ---
+    let obstacles = [];
+    const obstacleTypes = [
+        { w: 20, h: 20, color: '#ff6b6b' },  // fire
+        { w: 25, h: 35, color: '#ffd93d' },  // rock
+        { w: 18, h: 40, color: '#a29bfe' }   // spike
+    ];
+
+    // --- COINS ---
+    let coins = [];
+    let coinCount = 0;
+
+    // --- STARS (Background) ---
+    let stars = [];
+    for (let i = 0; i < 60; i++) {
+        stars.push({
+            x: Math.random() * W,
+            y: Math.random() * (groundY - 20),
+            size: Math.random() * 2 + 0.5,
+            speed: Math.random() * 0.3 + 0.1
+        });
+    }
+
+    // --- PARTICLES ---
+    let particles = [];
+
+    // --- CONTROLS ---
+    let jumpPressed = false;
+
+    // --- FUNCTIONS ---
+
+    function resetGame() {
+        player.y = groundY - 40;
+        player.vy = 0;
+        player.grounded = true;
+        dragon.x = 750;
+        obstacles = [];
+        coins = [];
+        particles = [];
+        score = 0;
+        lives = 3;
+        coinCount = 0;
+        gameRunning = true;
+        gameOverDiv.style.display = 'none';
+        updateUI();
+        startMsg.style.display = 'block';
+        setTimeout(() => { startMsg.style.display = 'none'; }, 2000);
+    }
+
+    function updateUI() {
+        livesSpan.textContent = lives;
+        scoreSpan.textContent = score;
+    }
+
+    function jump() {
+        if (player.grounded && gameRunning) {
+            player.vy = player.jumpPower;
+            player.grounded = false;
+            // spawn jump particles
+            for (let i = 0; i < 8; i++) {
+                particles.push({
+                    x: player.x + player.w/2,
+                    y: player.y + player.h,
+                    vx: (Math.random() - 0.5) * 3,
+                    vy: Math.random() * 2 + 1,
+                    life: 20,
+                    maxLife: 20,
+                    color: '#4fc3f7'
+                });
+            }
+        }
+    }
+
+    function spawnObstacle() {
+        const type = obstacleTypes[Math.floor(Math.random() * obstacleTypes.length)];
+        obstacles.push({
+            x: W,
+            y: groundY - type.h,
+            w: type.w,
+            h: type.h,
+            color: type.color,
+            type: type
+        });
+    }
+
+    function spawnCoin() {
+        const yOff = Math.random() * 60 + 20;
+        coins.push({
+            x: W,
+            y: groundY - 30 - yOff,
+            w: 16,
+            h: 16,
+            radius: 8,
+            color: '#ffd93d',
+            bobOffset: Math.random() * Math.PI * 2
+        });
+    }
+
+    function spawnParticles(x, y, color, count = 12) {
+        for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 4 + 1;
+            particles.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 1,
+                life: 30,
+                maxLife: 30,
+                color: color
+            });
+        }
+    }
+
+    // --- UPDATE ---
+    function update() {
+        if (!gameRunning) return;
+        frame++;
+
+        // ---- Player Physics ----
+        player.vy += player.gravity;
+        player.y += player.vy;
+
+        if (player.y >= groundY - player.h) {
+            player.y = groundY - player.h;
+            player.vy = 0;
+            player.grounded = true;
+        } else {
+            player.grounded = false;
+        }
+
+        // ---- Dragon AI ----
+        dragon.x -= dragon.speed;
+        dragon.wingAngle += 0.12;
+
+        // if dragon goes off screen, reset to behind
+        if (dragon.x < -dragon.w - 20) {
+            dragon.x = W + 50;
+            // increase speed slightly each time
+            dragon.speed += 0.15;
+        }
+
+        // ---- Spawn Obstacles ----
+        if (frame % 80 === 0) {
+            spawnObstacle();
+        }
+
+        // ---- Spawn Coins ----
+        if (frame % 40 === 0) {
+            spawnCoin();
+        }
+
+        // ---- Update Obstacles ----
+        for (let i = obstacles.length - 1; i >= 0; i--) {
+            const obs = obstacles[i];
+            obs.x -= 4;
+
+            // collision with player
+            if (obs.x < player.x + player.w &&
+                obs.x + obs.w > player.x &&
+                obs.y < player.y + player.h &&
+                obs.y + obs.h > player.y) {
+                // hit!
+                spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff6b6b', 15);
+                lives--;
+                updateUI();
+                obstacles.splice(i, 1);
+                if (lives <= 0) {
+                    gameOver();
+                }
+                continue;
+            }
+
+            if (obs.x + obs.w < 0) {
+                obstacles.splice(i, 1);
+            }
+        }
+
+        // ---- Update Coins ----
+        for (let i = coins.length - 1; i >= 0; i--) {
+            const coin = coins[i];
+            coin.x -= 4;
+            coin.bobOffset += 0.06;
+
+            // collection
+            const dx = (player.x + player.w/2) - (coin.x + coin.radius);
+            const dy = (player.y + player.h/2) - (coin.y + coin.radius);
+            if (Math.sqrt(dx*dx + dy*dy) < coin.radius + 16) {
+                score += 10;
+                coinCount++;
+                spawnParticles(coin.x, coin.y, '#ffd93d', 10);
+                coins.splice(i, 1);
+                updateUI();
+                continue;
+            }
+
+            if (coin.x + coin.radius < 0) {
+                coins.splice(i, 1);
+            }
+        }
+
+        // ---- Update Particles ----
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx;
+            p.y += p.vy;
+            p.vy += 0.05;
+            p.life--;
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+
+        // ---- Dragon collision with player ----
+        if (dragon.x < player.x + player.w &&
+            dragon.x + dragon.w > player.x &&
+            dragon.y < player.y + player.h &&
+            dragon.y + dragon.h > player.y) {
+            // dragon caught you!
+            spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff6b35', 25);
+            lives--;
+            updateUI();
+            // reset player position with invincibility frames (simple)
+            player.x = 80;
+            player.y = groundY - 40;
+            player.vy = -6;
+            if (lives <= 0) {
+                gameOver();
+            }
+        }
+
+        // ---- Stars ----
+        for (const star of stars) {
+            star.x -= star.speed;
+            if (star.x < 0) {
+                star.x = W;
+                star.y = Math.random() * (groundY - 20);
+            }
+        }
+    }
+
+    // --- DRAW ---
+    function draw() {
+        ctx.clearRect(0, 0, W, H);
+
+        // ---- Background ----
+        const grad = ctx.createLinearGradient(0, 0, 0, H);
+        grad.addColorStop(0, '#0f0c29');
+        grad.addColorStop(0.5, '#1a1a2e');
+        grad.addColorStop(1, '#16213e');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, W, H);
+
+        // ---- Stars ----
+        for (const star of stars) {
+            ctx.beginPath();
+            ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.fill();
+        }
+
+        // ---- Ground ----
+        ctx.fillStyle = '#2d3436';
+        ctx.fillRect(0, groundY, W, groundHeight);
+        // ground line
+        ctx.strokeStyle = '#4a4a5a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, groundY);
+        ctx.lineTo(W, groundY);
+        ctx.stroke();
+
+        // grass details
+        for (let i = 0; i < W; i += 20) {
+            const offset = (frame * 0.5) % 20;
+            const x = (i - offset + W) % W;
+            ctx.fillStyle = '#2e7d32';
+            ctx.fillRect(x, groundY - 2, 2, 6);
+        }
+
+        // ---- Coins ----
+        for (const coin of coins) {
+            const bobY = Math.sin(coin.bobOffset) * 4;
+            const cy = coin.y + bobY;
+            // glow
+            const grad2 = ctx.createRadialGradient(coin.x+8, cy+8, 2, coin.x+8, cy+8, 16);
+            grad2.addColorStop(0, 'rgba(255,217,61,0.3)');
+            grad2.addColorStop(1, 'rgba(255,217,61,0)');
+            ctx.fillStyle = grad2;
+            ctx.beginPath();
+            ctx.arc(coin.x+8, cy+8, 16, 0, Math.PI*2);
+            ctx.fill();
+
+            // coin body
+            ctx.fillStyle = coin.color;
+            ctx.shadowColor = '#ffd93d';
+            ctx.shadowBlur = 12;
+            ctx.beginPath();
+            ctx.arc(coin.x + 8, cy + 8, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // inner star
+            ctx.fillStyle = '#f9a825';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('★', coin.x + 8, cy + 9);
+        }
+
+        // ---- Obstacles ----
+        for (const obs of obstacles) {
+            ctx.fillStyle = obs.color;
+            ctx.shadowColor = obs.color;
+            ctx.shadowBlur = 10;
+
+            // fire / spike details
+            if (obs.w === 20 && obs.h === 20) {
+                // fire
+                ctx.beginPath();
+                ctx.arc(obs.x + 10, obs.y + 10, 12, 0, Math.PI * 2);
+                ctx.fill();
+                // inner fire
+                ctx.fillStyle = '#ffd93d';
+                ctx.shadowBlur = 20;
+                ctx.beginPath();
+                ctx.arc(obs.x + 8, obs.y + 8, 6, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (obs.w === 25 && obs.h === 35) {
+                // rock
+                ctx.beginPath();
+                ctx.moveTo(obs.x, obs.y + obs.h);
+                ctx.quadraticCurveTo(obs.x + 5, obs.y, obs.x + 12, obs.y + 5);
+                ctx.quadraticCurveTo(obs.x + 20, obs.y - 2, obs.x + 25, obs.y + 5);
+                ctx.quadraticCurveTo(obs.x + 28, obs.y + 20, obs.x + 20, obs.y + obs.h);
+                ctx.closePath();
+                ctx.fill();
+                // highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.beginPath();
+                ctx.arc(obs.x + 8, obs.y + 8, 4, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // spike
+                ctx.beginPath();
+                ctx.moveTo(obs.x + obs.w/2, obs.y);
+                ctx.lineTo(obs.x + obs.w, obs.y + obs.h);
+                ctx.lineTo(obs.x, obs.y + obs.h);
+                ctx.closePath();
+                ctx.fill();
+            }
+            ctx.shadowBlur = 0;
+        }
+
+        // ---- Player (Boy) ----
+        const px = player.x, py = player.y;
+
+        // shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(px + 15, groundY + 4, 18, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // body
+        ctx.fillStyle = player.color;
+        ctx.shadowColor = '#4fc3f7';
+        ctx.shadowBlur = 15;
+        ctx.fillRect(px + 6, py + 14, 18, 20);
+
+        // head
+        ctx.beginPath();
+        ctx.arc(px + 15, py + 12, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // skin tone (face)
+        ctx.fillStyle = '#ffccbc';
+        ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.arc(px + 15, py + 12, 9, 0, Math.PI * 2);
+        ctx.fill();
+
+        // eyes
+        ctx.fillStyle = '#1a1a2e';
+        ctx.beginPath();
+        ctx.arc(px + 11, py + 10, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px + 19, py + 10, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // eye whites
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(px + 10, py + 9, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(px + 18, py + 9, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // mouth (smile)
+        ctx.strokeStyle = '#c62828';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(px + 15, py + 15, 4, 0.1, Math.PI - 0.1);
+        ctx.stroke();
+
+        // hair
+        ctx.fillStyle = '#3e2723';
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(px + 15, py + 8, 10, Math.PI, 2 * Math.PI);
+        ctx.fill();
+        // hair spikes
+        ctx.fillRect(px + 7, py + 1, 4, 6);
+        ctx.fillRect(px + 19, py + 1, 4, 6);
+        ctx.fillRect(px + 12, py - 1, 6, 6);
+
+        // legs
+        ctx.fillStyle = '#37474f';
+        ctx.fillRect(px + 8, py + 34, 6, 10);
+        ctx.fillRect(px + 16, py + 34, 6, 10);
+
+        // shoes
+        ctx.fillStyle = '#ff6b35';
+        ctx.fillRect(px + 6, py + 42, 10, 4);
+        ctx.fillRect(px + 14, py + 42, 10, 4);
+
+        // arms
+        ctx.fillStyle = '#ffccbc';
+        ctx.fillRect(px + 2, py + 18, 6, 10);
+        ctx.fillRect(px + 22, py + 18, 6, 10);
+
+        // cap
+        ctx.fillStyle = '#d32f2f';
+        ctx.beginPath();
+        ctx.ellipse(px + 15, py + 5, 12, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(px + 3, py + 2, 24, 4);
+
+        ctx.shadowBlur = 0;
+
+        // ---- Dragon ----
+        const dx = dragon.x, dy = dragon.y;
+        const wing = Math.sin(dragon.wingAngle) * 12;
+
+        // dragon shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(dx + 25, groundY + 6, 30, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // body
+        ctx.fillStyle = dragon.color;
+        ctx.shadowColor = '#ff6b35';
+        ctx.shadowBlur = 20;
+        ctx.beginPath();
+        ctx.ellipse(dx + 25, dy + 25, 28, 22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // head
+        ctx.beginPath();
+        ctx.ellipse(dx + 45, dy + 18, 16, 14, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // neck
+        ctx.fillRect(dx + 32, dy + 16, 14, 16);
+
+        // wings
+        ctx.fillStyle = '#e65100';
+        ctx.shadowBlur = 10;
+        // left wing
+        ctx.beginPath();
+        ctx.moveTo(dx + 10, dy + 14);
+        ctx.quadraticCurveTo(dx - 10 + wing, dy - 20, dx + 8, dy + 8);
+        ctx.fill();
+        // right wing
+        ctx.beginPath();
+        ctx.moveTo(dx + 40, dy + 14);
+        ctx.quadraticCurveTo(dx + 60 - wing, dy - 20, dx + 42, dy + 8);
+        ctx.fill();
+
+        // eyes
+        ctx.fillStyle = dragon.eyeColor;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#ffd93d';
+        ctx.beginPath();
+        ctx.arc(dx + 50, dy + 14, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(dx + 40, dy + 14, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // pupils
+        ctx.fillStyle = '#1a1a2e';
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(dx + 52, dy + 14, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(dx + 42, dy + 14, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // fire breath (when close to player)
+        if (dragon.x < 200) {
+            ctx.fillStyle = 'rgba(255,107,53,0.2)';
+            ctx.shadowBlur = 40;
+            ctx.shadowColor = '#ff6b35';
+            ctx.beginPath();
+            ctx.moveTo(dx + 60, dy + 20);
+            ctx.quadraticCurveTo(dx + 100, dy - 10, dx + 90, dy + 30);
+            ctx.quadraticCurveTo(dx + 100, dy + 50, dx + 60, dy + 30);
+            ctx.fill();
+
+            ctx.fillStyle = 'rgba(255,217,61,0.15)';
+            ctx.beginPath();
+            ctx.moveTo(dx + 60, dy + 24);
+            ctx.quadraticCurveTo(dx + 80, dy + 8, dx + 75, dy + 28);
+            ctx.quadraticCurveTo(dx + 80, dy + 44, dx + 60, dy + 28);
+            ctx.fill();
+        }
+
+        // dragon belly
+        ctx.fillStyle = '#ff8a65';
+        ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.ellipse(dx + 25, dy + 32, 18, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // spikes on back
+        ctx.fillStyle = '#e65100';
+        for (let i = 0; i < 4; i++) {
+            const sx = dx + 8 + i * 10;
+            const sy = dy + 6 + Math.sin(i * 0.8) * 4;
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.lineTo(sx + 4, sy - 12);
+            ctx.lineTo(sx + 8, sy);
+            ctx.fill();
+        }
+
+        ctx.shadowBlur = 0;
+
+        // ---- Particles ----
+        for (const p of particles) {
+            const alpha = p.life / p.maxLife;
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = p.color;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 3 * alpha + 1, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+
+        // ---- Ground shadow line (detail) ----
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < W; i += 30) {
+            const offset = (frame * 0.5) % 30;
+            const x = (i - offset + W) % W;
+            ctx.beginPath();
+            ctx.moveTo(x, groundY + 20);
+            ctx.lineTo(x + 15, groundY + 20);
+            ctx.stroke();
+        }
+    }
+
+    // --- GAME OVER ---
+    function gameOver() {
+        gameRunning = false;
+        finalScoreSpan.textContent = score;
+        gameOverDiv.style.display = 'flex';
+    }
+
+    // --- GAME LOOP ---
+    function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // --- CONTROLS ---
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+            e.preventDefault();
+            jump();
+        }
+    });
+
+    canvas.addEventListener('click', (e) => {
+        jump();
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        jump();
+    });
+
+    restartBtn.addEventListener('click', () => {
+        resetGame();
+        // restart button focus
+        restartBtn.blur();
+    });
+
+    // --- START ---
+    resetGame();
+    gameLoop();
+
+    // --- RESIZE HANDLING ---
+    function resizeCanvas() {
+        const container = document.getElementById('gameContainer');
+        const maxWidth = window.innerWidth - 40;
+        const maxHeight = window.innerHeight - 40;
+        const aspect = 800 / 400;
+        let w = maxWidth;
+        let h = w / aspect;
+        if (h > maxHeight) {
+            h = maxHeight;
+            w = h * aspect;
+        }
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    console.log('🐉 Dragon Chase loaded!');
+    console.log('🕹️  Jump: Space / Click / Tap');
+    console.log('⭐ Collect coins for points!');
+    console.log('❤️  You have 3 lives. Don\'t get caught!');
+</script>
+
+</body>
+</html>
