@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🐉 Dragon Chase – Angel Edition (Turbo)</title>
+    <title>🐉 Dragon Chase – Angel Edition (SUPER FAST)</title>
     <style>
         * {
             margin: 0;
@@ -167,17 +167,17 @@
     let lives = 3;
     let frame = 0;
 
-    // --- PLAYER (EVEN FASTER & HIGHER JUMP) ---
+    // --- PLAYER (VERY FAST) ---
     const player = {
         x: 80,
         y: groundY - 40,
         w: 28,
         h: 38,
         vy: 0,
-        gravity: 0.55,
-        jumpPower: -15.5,      // even higher jump
+        gravity: 0.6,
+        jumpPower: -16,      // very high jump
         grounded: true,
-        speed: 8.5,            // significantly faster
+        speed: 14,           // EXTREMELY FAST
         color: '#4fc3f7'
     };
 
@@ -187,7 +187,7 @@
         y: groundY - 48,
         w: 50,
         h: 48,
-        speed: 4.8,
+        speed: 5.2,
         wingAngle: 0,
         color: '#ff6b35'
     };
@@ -263,7 +263,7 @@
             osc.stop(audioCtx.currentTime + 0.4);
             noteIndex++;
             // schedule next note
-            const delay = 0.2 + Math.random() * 0.12; // slightly faster arpeggio
+            const delay = 0.2 + Math.random() * 0.12;
             setTimeout(() => { if (gameRunning) playNote(); }, delay * 1000);
         }
 
@@ -406,15 +406,15 @@
         angel.wingAngle += 0.06;
 
         // ---- Spawn obstacles ----
-        if (frame % 65 === 0) spawnObstacle(); // slightly more frequent
+        if (frame % 55 === 0) spawnObstacle(); // more frequent
 
         // ---- Spawn coins ----
-        if (frame % 32 === 0) spawnCoin();
+        if (frame % 28 === 0) spawnCoin();
 
         // ---- Obstacles collision ----
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const obs = obstacles[i];
-            obs.x -= 6.2; // faster obstacles
+            obs.x -= 7.0; // faster obstacles
             if (obs.x < player.x + player.w &&
                 obs.x + obs.w > player.x &&
                 obs.y < player.y + player.h &&
@@ -432,7 +432,7 @@
         // ---- Coins ----
         for (let i = coins.length - 1; i >= 0; i--) {
             const coin = coins[i];
-            coin.x -= 5.6;
+            coin.x -= 6.0;
             coin.bobOffset += 0.07;
             const dx = (player.x + player.w/2) - (coin.x + coin.radius);
             const dy = (player.y + player.h/2) - (coin.y + coin.radius);
