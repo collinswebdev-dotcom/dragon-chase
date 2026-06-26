@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🐉 Dragon Chase – Angel Edition (Double Jump + Music Fix)</title>
+    <title>🐉 Dragon Chase – Double Bounce + Music Fix</title>
     <style>
         * {
             margin: 0;
@@ -137,7 +137,7 @@
         <span>❤️ <span id="livesDisplay">3</span></span>
         <span>⭐ <span id="scoreDisplay">0</span></span>
     </div>
-    <div id="startMsg">👆 Tap / Press Space to Jump (Double Jump!)</div>
+    <div id="startMsg">👆 Tap / Press Space to Jump (Double Bounce!)</div>
     <div id="gameOver">
         <h1>💀 GAME OVER</h1>
         <p>The Dragon caught you!</p>
@@ -167,20 +167,23 @@
     let lives = 3;
     let frame = 0;
 
-    // --- PLAYER (VERY FAST + DOUBLE JUMP) ---
+    // --- PLAYER (VERY FAST + DOUBLE BOUNCE) ---
     const player = {
         x: 80,
         y: groundY - 40,
         w: 28,
         h: 38,
         vy: 0,
-        gravity: 0.6,
-        jumpPower: -16,
+        gravity: 0.55,
+        jumpPower: -14,
         grounded: true,
         speed: 14,
         color: '#4fc3f7',
         jumpCount: 0,
-        maxJumps: 2
+        maxJumps: 2,
+        // Visual effects
+        doubleJumpReady: false,
+        doubleJumpUsed: false
     };
 
     // --- DRAGON ---
@@ -250,15 +253,11 @@
     function playBackgroundMusic() {
         if (!audioCtx || !gameRunning) return;
 
-        // Simple arpeggio-like background (angelic feel)
-        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        const notes = [523.25, 659.25, 783.99, 1046.50];
         let noteIndex = 0;
 
         function playNote() {
-            if (!gameRunning) {
-                // If game stops, stop the loop
-                return;
-            }
+            if (!gameRunning) return;
             try {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
@@ -271,22 +270,18 @@
                 osc.start();
                 osc.stop(audioCtx.currentTime + 0.4);
                 noteIndex++;
-                // schedule next note
                 const delay = 0.2 + Math.random() * 0.12;
                 if (gameRunning) {
                     audioTimeout = setTimeout(() => { if (gameRunning) playNote(); }, delay * 1000);
                 }
-            } catch (e) {
-                // Silently handle audio errors
-            }
+            } catch (e) {}
         }
 
-        // start a soft pad drone (angelic hum)
         try {
             const drone = audioCtx.createOscillator();
             const droneGain = audioCtx.createGain();
             drone.type = 'sine';
-            drone.frequency.value = 130.81; // C3
+            drone.frequency.value = 130.81;
             droneGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
             droneGain.gain.exponentialRampToValueAtTime(0.02, audioCtx.currentTime + 0.5);
             drone.connect(droneGain);
@@ -294,18 +289,12 @@
             drone.start();
             drone.stop(audioCtx.currentTime + 60);
 
-            // start the arpeggio
             playNote();
 
-            // restart after drone ends
-            if (gameRunning) {
-                setTimeout(() => {
-                    if (gameRunning) playBackgroundMusic();
-                }, 60000);
-            }
-        } catch (e) {
-            // Silently handle audio errors
-        }
+            setTimeout(() => {
+                if (gameRunning) playBackgroundMusic();
+            }, 60000);
+        } catch (e) {}
     }
 
     // --- FUNCTIONS ---
@@ -314,6 +303,8 @@
         player.vy = 0;
         player.grounded = true;
         player.jumpCount = 0;
+        player.doubleJumpReady = false;
+        player.doubleJumpUsed = false;
         dragon.x = 750;
         obstacles = [];
         coins = [];
@@ -327,20 +318,14 @@
         startMsg.style.display = 'block';
         setTimeout(() => { startMsg.style.display = 'none'; }, 2000);
 
-        // Ensure music continues
         if (!isAudioPlaying) {
             initAudio();
         } else if (audioCtx && audioCtx.state === 'suspended') {
             audioCtx.resume();
         }
-        // Clear any old timeout to prevent conflicts
         if (audioTimeout) {
             clearTimeout(audioTimeout);
             audioTimeout = null;
-        }
-        // Restart music if needed
-        if (isAudioPlaying && gameRunning) {
-            // music will continue from the existing loop
         }
     }
 
@@ -352,38 +337,59 @@
     function jump() {
         if (!gameRunning) return;
 
-        // Double jump logic
+        // Double bounce logic: can jump if grounded OR if jumpCount < maxJumps
         if (player.jumpCount < player.maxJumps) {
+            // Apply jump
             player.vy = player.jumpPower;
             player.grounded = false;
             player.jumpCount++;
 
-            // Spawn jump particles
-            for (let i = 0; i < 10; i++) {
-                particles.push({
-                    x: player.x + player.w/2,
-                    y: player.y + player.h,
-                    vx: (Math.random() - 0.5) * 4,
-                    vy: Math.random() * 2 + 1,
-                    life: 20,
-                    maxLife: 20,
-                    color: player.jumpCount === 1 ? '#4fc3f7' : '#ffd700'
-                });
-            }
-
-            // Double jump visual effect
-            if (player.jumpCount === 2) {
-                for (let i = 0; i < 15; i++) {
+            // Visual feedback
+            if (player.jumpCount === 1) {
+                // First jump - blue particles
+                for (let i = 0; i < 10; i++) {
+                    particles.push({
+                        x: player.x + player.w/2,
+                        y: player.y + player.h,
+                        vx: (Math.random() - 0.5) * 4,
+                        vy: Math.random() * 2 + 1,
+                        life: 20,
+                        maxLife: 20,
+                        color: '#4fc3f7'
+                    });
+                }
+                // Show double jump ready indicator
+                player.doubleJumpReady = true;
+            } else if (player.jumpCount === 2) {
+                // Second jump (double bounce) - golden particles
+                for (let i = 0; i < 20; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = Math.random() * 6 + 2;
                     particles.push({
                         x: player.x + player.w/2,
                         y: player.y + player.h/2,
-                        vx: (Math.random() - 0.5) * 6,
-                        vy: (Math.random() - 0.5) * 6,
-                        life: 25,
-                        maxLife: 25,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed - 2,
+                        life: 30,
+                        maxLife: 30,
                         color: '#ffd700'
                     });
                 }
+                // Ring effect for double jump
+                for (let i = 0; i < 12; i++) {
+                    const angle = (i / 12) * Math.PI * 2;
+                    particles.push({
+                        x: player.x + player.w/2 + Math.cos(angle) * 20,
+                        y: player.y + player.h/2 + Math.sin(angle) * 20,
+                        vx: Math.cos(angle) * 2,
+                        vy: Math.sin(angle) * 2,
+                        life: 25,
+                        maxLife: 25,
+                        color: '#ffa500'
+                    });
+                }
+                player.doubleJumpReady = false;
+                player.doubleJumpUsed = true;
             }
         }
     }
@@ -440,6 +446,8 @@
             player.vy = 0;
             player.grounded = true;
             player.jumpCount = 0; // Reset jump count when landing
+            player.doubleJumpReady = false;
+            player.doubleJumpUsed = false;
         } else {
             player.grounded = false;
         }
@@ -522,6 +530,8 @@
             player.y = groundY - 40;
             player.vy = -8;
             player.jumpCount = 0;
+            player.doubleJumpReady = false;
+            player.doubleJumpUsed = false;
             if (lives <= 0) gameOver();
         }
 
@@ -554,7 +564,6 @@
 
         // ---- ANGEL (glowing) ----
         const ax = angel.x, ay = angel.y;
-        // glow
         const glow = ctx.createRadialGradient(ax+14, ay+14, 4, ax+14, ay+14, 50);
         glow.addColorStop(0, `rgba(255,215,0,${0.25 * angel.glow})`);
         glow.addColorStop(0.5, `rgba(255,215,0,${0.1 * angel.glow})`);
@@ -564,37 +573,31 @@
         ctx.arc(ax+14, ay+14, 50, 0, Math.PI*2);
         ctx.fill();
 
-        // wings
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
         ctx.shadowColor = '#ffd700';
         ctx.shadowBlur = 30;
         const wingFlap = Math.sin(angel.wingAngle) * 8;
-        // left wing
         ctx.beginPath();
         ctx.moveTo(ax+8, ay+12);
         ctx.quadraticCurveTo(ax-30 + wingFlap, ay-20, ax+4, ay+6);
         ctx.fill();
-        // right wing
         ctx.beginPath();
         ctx.moveTo(ax+20, ay+12);
         ctx.quadraticCurveTo(ax+58 - wingFlap, ay-20, ax+24, ay+6);
         ctx.fill();
 
-        // body (light)
         ctx.shadowBlur = 40;
         ctx.fillStyle = 'rgba(255, 255, 240, 0.85)';
         ctx.beginPath();
         ctx.arc(ax+14, ay+14, 12, 0, Math.PI*2);
         ctx.fill();
 
-        // halo
         ctx.shadowBlur = 50;
         ctx.strokeStyle = 'rgba(255,215,0,0.5)';
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(ax+14, ay+8, 16, Math.PI, 2*Math.PI);
         ctx.stroke();
-
         ctx.shadowBlur = 0;
 
         // ---- Ground ----
@@ -638,31 +641,31 @@
         const px = player.x, py = player.y;
         ctx.shadowBlur = 0;
 
-        // shadow
+        // Shadow
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
         ctx.ellipse(px+14, groundY+4, 18, 5, 0, 0, Math.PI*2);
         ctx.fill();
 
-        // body
+        // Body
         ctx.fillStyle = player.color;
         ctx.shadowColor = '#4fc3f7';
         ctx.shadowBlur = 12;
         ctx.fillRect(px+5, py+12, 18, 20);
 
-        // head
+        // Head
         ctx.beginPath();
         ctx.arc(px+14, py+10, 12, 0, Math.PI*2);
         ctx.fill();
 
-        // skin
+        // Skin
         ctx.fillStyle = '#ffccbc';
         ctx.shadowBlur = 4;
         ctx.beginPath();
         ctx.arc(px+14, py+10, 9, 0, Math.PI*2);
         ctx.fill();
 
-        // eyes
+        // Eyes
         ctx.fillStyle = '#1a1a2e';
         ctx.beginPath();
         ctx.arc(px+10, py+8, 2.5, 0, Math.PI*2);
@@ -678,14 +681,14 @@
         ctx.arc(px+17, py+7, 1.2, 0, Math.PI*2);
         ctx.fill();
 
-        // smile
+        // Smile
         ctx.strokeStyle = '#c62828';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.arc(px+14, py+13, 4, 0.1, Math.PI-0.1);
         ctx.stroke();
 
-        // hair
+        // Hair
         ctx.fillStyle = '#3e2723';
         ctx.shadowBlur = 0;
         ctx.beginPath();
@@ -695,22 +698,22 @@
         ctx.fillRect(px+18, py-1, 4, 6);
         ctx.fillRect(px+11, py-3, 6, 6);
 
-        // legs
+        // Legs
         ctx.fillStyle = '#37474f';
         ctx.fillRect(px+7, py+32, 6, 10);
         ctx.fillRect(px+15, py+32, 6, 10);
 
-        // shoes
+        // Shoes
         ctx.fillStyle = '#ff6b35';
         ctx.fillRect(px+5, py+40, 10, 4);
         ctx.fillRect(px+13, py+40, 10, 4);
 
-        // arms
+        // Arms
         ctx.fillStyle = '#ffccbc';
         ctx.fillRect(px+1, py+16, 6, 10);
         ctx.fillRect(px+21, py+16, 6, 10);
 
-        // cap
+        // Cap
         ctx.fillStyle = '#d32f2f';
         ctx.beginPath();
         ctx.ellipse(px+14, py+3, 12, 4, 0, 0, Math.PI*2);
@@ -718,12 +721,33 @@
         ctx.fillRect(px+2, py, 24, 4);
         ctx.shadowBlur = 0;
 
-        // Double jump indicator
-        if (player.jumpCount === 1) {
-            ctx.fillStyle = 'rgba(255,215,0,0.3)';
-            ctx.font = '10px sans-serif';
+        // ---- DOUBLE BOUNCE INDICATOR ----
+        if (player.jumpCount === 1 && !player.grounded) {
+            // Show that double bounce is available
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.6)';
+            ctx.font = 'bold 12px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('✦ DOUBLE JUMP READY ✦', px+14, py-10);
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('✦ DOUBLE BOUNCE READY ✦', px+14, py-8);
+
+            // Pulsing ring around player
+            const pulse = Math.sin(frame * 0.08) * 0.3 + 0.7;
+            ctx.strokeStyle = `rgba(255, 215, 0, ${pulse * 0.4})`;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.arc(px+14, py+16, 28, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        if (player.jumpCount === 2) {
+            // After double jump, show a brief indicator
+            ctx.fillStyle = 'rgba(255, 165, 0, 0.4)';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('✦ DOUBLE BOUNCE! ✦', px+14, py-8);
         }
 
         // ---- Dragon ----
@@ -777,7 +801,7 @@
         ctx.arc(dx+42, dy+12, 2.5, 0, Math.PI*2);
         ctx.fill();
 
-        // fire breath
+        // Fire breath
         if (dragon.x < 220) {
             ctx.fillStyle = 'rgba(255,107,53,0.2)';
             ctx.shadowBlur = 40;
@@ -834,8 +858,7 @@
         gameRunning = false;
         finalScoreSpan.textContent = score;
         gameOverDiv.style.display = 'flex';
-        // Don't suspend audio - let it keep playing!
-        // Just stop the game loop from updating, but music continues
+        // Music keeps playing!
     }
 
     // --- LOOP ---
