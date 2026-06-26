@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>🐉 Dragon Chase – Angel Edition (SUPER FAST)</title>
+    <title>🐉 Dragon Chase – Angel Edition (Double Jump + Music Fix)</title>
     <style>
         * {
             margin: 0;
@@ -137,7 +137,7 @@
         <span>❤️ <span id="livesDisplay">3</span></span>
         <span>⭐ <span id="scoreDisplay">0</span></span>
     </div>
-    <div id="startMsg">👆 Tap / Press Space to Jump</div>
+    <div id="startMsg">👆 Tap / Press Space to Jump (Double Jump!)</div>
     <div id="gameOver">
         <h1>💀 GAME OVER</h1>
         <p>The Dragon caught you!</p>
@@ -167,7 +167,7 @@
     let lives = 3;
     let frame = 0;
 
-    // --- PLAYER (VERY FAST) ---
+    // --- PLAYER (VERY FAST + DOUBLE JUMP) ---
     const player = {
         x: 80,
         y: groundY - 40,
@@ -175,10 +175,12 @@
         h: 38,
         vy: 0,
         gravity: 0.6,
-        jumpPower: -16,      // very high jump
+        jumpPower: -16,
         grounded: true,
-        speed: 14,           // EXTREMELY FAST
-        color: '#4fc3f7'
+        speed: 14,
+        color: '#4fc3f7',
+        jumpCount: 0,
+        maxJumps: 2
     };
 
     // --- DRAGON ---
@@ -227,65 +229,83 @@
         wingAngle: 0
     };
 
-    // --- AUDIO (Web Audio API – no external files) ---
+    // --- AUDIO (Web Audio API – no external files, CONTINUOUS) ---
     let audioCtx = null;
     let isAudioPlaying = false;
+    let audioTimeout = null;
 
     function initAudio() {
         if (!audioCtx) {
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         }
-        if (!isAudioPlaying) {
+        if (!isAudioPlaying && gameRunning) {
             playBackgroundMusic();
             isAudioPlaying = true;
+        }
+        if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
         }
     }
 
     function playBackgroundMusic() {
-        if (!audioCtx) return;
-        const now = audioCtx.currentTime;
+        if (!audioCtx || !gameRunning) return;
 
         // Simple arpeggio-like background (angelic feel)
         const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
         let noteIndex = 0;
 
         function playNote() {
-            if (!gameRunning) return;
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.type = 'sine';
-            osc.frequency.value = notes[noteIndex % notes.length];
-            gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start();
-            osc.stop(audioCtx.currentTime + 0.4);
-            noteIndex++;
-            // schedule next note
-            const delay = 0.2 + Math.random() * 0.12;
-            setTimeout(() => { if (gameRunning) playNote(); }, delay * 1000);
+            if (!gameRunning) {
+                // If game stops, stop the loop
+                return;
+            }
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.value = notes[noteIndex % notes.length];
+                gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+                noteIndex++;
+                // schedule next note
+                const delay = 0.2 + Math.random() * 0.12;
+                if (gameRunning) {
+                    audioTimeout = setTimeout(() => { if (gameRunning) playNote(); }, delay * 1000);
+                }
+            } catch (e) {
+                // Silently handle audio errors
+            }
         }
 
         // start a soft pad drone (angelic hum)
-        const drone = audioCtx.createOscillator();
-        const droneGain = audioCtx.createGain();
-        drone.type = 'sine';
-        drone.frequency.value = 130.81; // C3
-        droneGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
-        droneGain.gain.exponentialRampToValueAtTime(0.02, audioCtx.currentTime + 0.5);
-        drone.connect(droneGain);
-        droneGain.connect(audioCtx.destination);
-        drone.start();
-        drone.stop(audioCtx.currentTime + 60);
+        try {
+            const drone = audioCtx.createOscillator();
+            const droneGain = audioCtx.createGain();
+            drone.type = 'sine';
+            drone.frequency.value = 130.81; // C3
+            droneGain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            droneGain.gain.exponentialRampToValueAtTime(0.02, audioCtx.currentTime + 0.5);
+            drone.connect(droneGain);
+            droneGain.connect(audioCtx.destination);
+            drone.start();
+            drone.stop(audioCtx.currentTime + 60);
 
-        // start the arpeggio
-        playNote();
+            // start the arpeggio
+            playNote();
 
-        // restart after drone ends
-        setTimeout(() => {
-            if (gameRunning) playBackgroundMusic();
-        }, 60000);
+            // restart after drone ends
+            if (gameRunning) {
+                setTimeout(() => {
+                    if (gameRunning) playBackgroundMusic();
+                }, 60000);
+            }
+        } catch (e) {
+            // Silently handle audio errors
+        }
     }
 
     // --- FUNCTIONS ---
@@ -293,6 +313,7 @@
         player.y = groundY - 40;
         player.vy = 0;
         player.grounded = true;
+        player.jumpCount = 0;
         dragon.x = 750;
         obstacles = [];
         coins = [];
@@ -305,11 +326,21 @@
         updateUI();
         startMsg.style.display = 'block';
         setTimeout(() => { startMsg.style.display = 'none'; }, 2000);
-        if (audioCtx && audioCtx.state === 'suspended') {
-            audioCtx.resume();
-        }
+
+        // Ensure music continues
         if (!isAudioPlaying) {
             initAudio();
+        } else if (audioCtx && audioCtx.state === 'suspended') {
+            audioCtx.resume();
+        }
+        // Clear any old timeout to prevent conflicts
+        if (audioTimeout) {
+            clearTimeout(audioTimeout);
+            audioTimeout = null;
+        }
+        // Restart music if needed
+        if (isAudioPlaying && gameRunning) {
+            // music will continue from the existing loop
         }
     }
 
@@ -319,9 +350,15 @@
     }
 
     function jump() {
-        if (player.grounded && gameRunning) {
+        if (!gameRunning) return;
+
+        // Double jump logic
+        if (player.jumpCount < player.maxJumps) {
             player.vy = player.jumpPower;
             player.grounded = false;
+            player.jumpCount++;
+
+            // Spawn jump particles
             for (let i = 0; i < 10; i++) {
                 particles.push({
                     x: player.x + player.w/2,
@@ -330,8 +367,23 @@
                     vy: Math.random() * 2 + 1,
                     life: 20,
                     maxLife: 20,
-                    color: '#4fc3f7'
+                    color: player.jumpCount === 1 ? '#4fc3f7' : '#ffd700'
                 });
+            }
+
+            // Double jump visual effect
+            if (player.jumpCount === 2) {
+                for (let i = 0; i < 15; i++) {
+                    particles.push({
+                        x: player.x + player.w/2,
+                        y: player.y + player.h/2,
+                        vx: (Math.random() - 0.5) * 6,
+                        vy: (Math.random() - 0.5) * 6,
+                        life: 25,
+                        maxLife: 25,
+                        color: '#ffd700'
+                    });
+                }
             }
         }
     }
@@ -387,6 +439,7 @@
             player.y = groundY - player.h;
             player.vy = 0;
             player.grounded = true;
+            player.jumpCount = 0; // Reset jump count when landing
         } else {
             player.grounded = false;
         }
@@ -406,7 +459,7 @@
         angel.wingAngle += 0.06;
 
         // ---- Spawn obstacles ----
-        if (frame % 55 === 0) spawnObstacle(); // more frequent
+        if (frame % 55 === 0) spawnObstacle();
 
         // ---- Spawn coins ----
         if (frame % 28 === 0) spawnCoin();
@@ -414,7 +467,7 @@
         // ---- Obstacles collision ----
         for (let i = obstacles.length - 1; i >= 0; i--) {
             const obs = obstacles[i];
-            obs.x -= 7.0; // faster obstacles
+            obs.x -= 7.0;
             if (obs.x < player.x + player.w &&
                 obs.x + obs.w > player.x &&
                 obs.y < player.y + player.h &&
@@ -468,6 +521,7 @@
             player.x = 80;
             player.y = groundY - 40;
             player.vy = -8;
+            player.jumpCount = 0;
             if (lives <= 0) gameOver();
         }
 
@@ -664,6 +718,14 @@
         ctx.fillRect(px+2, py, 24, 4);
         ctx.shadowBlur = 0;
 
+        // Double jump indicator
+        if (player.jumpCount === 1) {
+            ctx.fillStyle = 'rgba(255,215,0,0.3)';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('✦ DOUBLE JUMP READY ✦', px+14, py-10);
+        }
+
         // ---- Dragon ----
         const dx = dragon.x, dy = dragon.y;
         const wing = Math.sin(dragon.wingAngle) * 14;
@@ -772,7 +834,8 @@
         gameRunning = false;
         finalScoreSpan.textContent = score;
         gameOverDiv.style.display = 'flex';
-        if (audioCtx) audioCtx.suspend();
+        // Don't suspend audio - let it keep playing!
+        // Just stop the game loop from updating, but music continues
     }
 
     // --- LOOP ---
@@ -784,11 +847,25 @@
 
     // --- CONTROLS ---
     document.addEventListener('keydown', (e) => {
-        if (e.code === 'Space') { e.preventDefault(); initAudio(); jump(); }
+        if (e.code === 'Space') {
+            e.preventDefault();
+            initAudio();
+            jump();
+        }
     });
-    canvas.addEventListener('click', () => { initAudio(); jump(); });
-    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); initAudio(); jump(); });
-    restartBtn.addEventListener('click', () => { initAudio(); resetGame(); });
+    canvas.addEventListener('click', () => {
+        initAudio();
+        jump();
+    });
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        initAudio();
+        jump();
+    });
+    restartBtn.addEventListener('click', () => {
+        initAudio();
+        resetGame();
+    });
 
     // --- START ---
     resetGame();
